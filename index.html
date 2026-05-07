@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+<title>南港段 AI 雲端拍貼機</title>
+
+<style>
+
+*{
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+}
+
+body{
+  background:#050816;
+  overflow:hidden;
+  font-family:"Microsoft JhengHei",sans-serif;
+  color:white;
+}
+
+#bgVideo{
+  position:fixed;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  opacity:0.15;
+  z-index:0;
+}
+
+.container{
+  position:relative;
+  z-index:2;
+  width:100vw;
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+}
+
+.title{
+  position:absolute;
+  top:20px;
+  left:30px;
+  font-size:32px;
+  font-weight:bold;
+  color:#5de4ff;
+  text-shadow:0 0 20px #00eaff;
+}
+
+.subtitle{
+  position:absolute;
+  top:70px;
+  left:32px;
+  color:#9fdcff;
+  font-size:14px;
+  letter-spacing:2px;
+}
+
+.camera-wrapper{
+  position:relative;
+  width:1280px;
+  height:720px;
+  border-radius:25px;
+  overflow:hidden;
+  border:4px solid rgba(0,255,255,0.4);
+  box-shadow:
+    0 0 30px rgba(0,255,255,0.4),
+    inset 0 0 30px rgba(0,255,255,0.15);
+}
+
+video{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  transform:scaleX(-1);
+}
+
+.overlay{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+}
+
+.overlay::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  border:6px solid rgba(0,255,255,0.2);
+  border-radius:25px;
+}
+
+.scan-line{
+  position:absolute;
+  width:100%;
+  height:4px;
+  background:rgba(0,255,255,0.8);
+  box-shadow:0 0 20px cyan;
+  animation:scan 3s linear infinite;
+}
+
+@keyframes scan{
+  0%{top:0;}
+  100%{top:100%;}
+}
+
+.countdown{
+  position:absolute;
+  font-size:180px;
+  font-weight:bold;
+  color:white;
+  text-shadow:
+    0 0 20px cyan,
+    0 0 40px cyan;
+  display:none;
+}
+
+.controls{
+  margin-top:25px;
+  display:flex;
+  gap:20px;
+}
+
+button{
+  padding:16px 40px;
+  border:none;
+  border-radius:15px;
+  background:linear-gradient(135deg,#00d2ff,#3a7bd5);
+  color:white;
+  font-size:22px;
+  cursor:pointer;
+  font-weight:bold;
+  box-shadow:0 0 20px rgba(0,255,255,0.4);
+  transition:0.3s;
+}
+
+button:hover{
+  transform:scale(1.05);
+}
+
+#preview{
+  margin-top:20px;
+  max-width:400px;
+  border-radius:20px;
+  border:3px solid cyan;
+  display:none;
+}
+
+.status{
+  position:absolute;
+  right:30px;
+  top:30px;
+  text-align:right;
+  color:#8edfff;
+  font-size:14px;
+  line-height:1.8;
+}
+
+.footer{
+  position:absolute;
+  bottom:15px;
+  color:#6aa8d8;
+  font-size:13px;
+  letter-spacing:2px;
+}
+
+</style>
+</head>
+
+<body>
+
+<video autoplay muted loop id="bgVideo">
+  <source src="" type="video/mp4">
+</video>
+
+<div class="container">
+
+  <div class="title">
+    南港段 AI 雲端拍貼機
+  </div>
+
+  <div class="subtitle">
+    NANGANG METRO SMART PHOTO BOOTH SYSTEM
+  </div>
+
+  <div class="status">
+    系統狀態：ONLINE<br>
+    攝影機狀態：待啟動
+  </div>
+
+  <div class="camera-wrapper">
+
+    <video id="camera" autoplay playsinline></video>
+
+    <div class="overlay">
+      <div class="scan-line"></div>
+    </div>
+
+  </div>
+
+  <div class="countdown" id="countdown">
+    3
+  </div>
+
+  <div class="controls">
+    <button onclick="startCapture()">
+      📸 開始拍照
+    </button>
+
+    <button onclick="downloadPhoto()">
+      ⬇ 下載 PNG
+    </button>
+  </div>
+
+  <canvas id="canvas" width="1280" height="720" style="display:none;"></canvas>
+
+  <img id="preview"/>
+
+  <div class="footer">
+    Taipei Metro Nangang Section © 2026
+  </div>
+
+</div>
+
+<script>
+
+const video = document.getElementById("camera");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const preview = document.getElementById("preview");
+const countdown = document.getElementById("countdown");
+
+let latestImage = null;
+
+async function initCamera(){
+
+  try{
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video:{
+        width:1280,
+        height:720
+      },
+      audio:false
+    });
+
+    video.srcObject = stream;
+
+  }catch(err){
+
+    alert("無法啟動攝影機：" + err);
+
+  }
+
+}
+
+async function startCapture(){
+
+  countdown.style.display = "block";
+
+  for(let i=3;i>=1;i--){
+
+    countdown.innerText = i;
+
+    await wait(1000);
+
+  }
+
+  countdown.style.display = "none";
+
+  capturePhoto();
+
+}
+
+function capturePhoto(){
+
+  ctx.save();
+
+  ctx.scale(-1,1);
+
+  ctx.drawImage(video,-1280,0,1280,720);
+
+  ctx.restore();
+
+  latestImage = canvas.toDataURL("image/png");
+
+  preview.src = latestImage;
+
+  preview.style.display = "block";
+
+}
+
+function downloadPhoto(){
+
+  if(!latestImage){
+
+    alert("尚未拍照");
+
+    return;
+
+  }
+
+  const a = document.createElement("a");
+
+  a.href = latestImage;
+
+  a.download = "nangang-photo.png";
+
+  a.click();
+
+}
+
+function wait(ms){
+
+  return new Promise(resolve=>setTimeout(resolve,ms));
+
+}
+
+initCamera();
+
+</script>
+
+</body>
+</html>
